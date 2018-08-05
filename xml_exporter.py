@@ -259,8 +259,8 @@ class Exporter:
                             vertices_by_group[object_group.name] = []
                         vertices_by_group[object_group.name].append(vertex.index)
 
-        armature_to_world = armature_object.matrix_world.inverted()
-        world_to_mesh = mesh_object.matrix_world
+        armature_to_world = armature_object.matrix_world
+        world_to_mesh = mesh_object.matrix_world.inverted()
         armature_to_mesh = world_to_mesh * armature_to_world
 
         bones_tag = ET.Element('bones')
