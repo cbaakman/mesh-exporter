@@ -2,6 +2,9 @@
 *.blend
 *.blend[0-9]
 
+# Editor swap files
+*.swp
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
