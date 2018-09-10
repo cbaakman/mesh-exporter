@@ -1,5 +1,5 @@
-# mesh-exporter
-An xml mesh exporter for blender 2.49
+# mesh-exporter 3.1
+An xml mesh exporter for blender 2.79
 
 # Installing
 Run blender and open a "user preferences" window. Go to Add-ons > Install Add-on from file. Then select the file and enable it.

@@ -16,7 +16,7 @@
 bl_info = {
     'name': 'Export to xml mesh type (.xml)',
     'author': 'Baakman, Coos',
-    'version': '3.0',
+    'version': '3.1',
     'blender': (2, 7, 9),
     'location': 'File > Export',
     'description': 'Export to xml mesh type (.xml)',
@@ -79,7 +79,7 @@ class Exporter:
             if mesh_object is None:
                 raise ValueError("no mesh for armature %s" % obj.name)
         else:
-            raise TypeError("%s is not a mesh not armature" % obj.name)
+            raise TypeError("%s is not a mesh nor armature" % obj.name)
 
         root = self._to_xml(mesh_object, armature_object)
         indent_xml(root)
@@ -129,8 +129,7 @@ class Exporter:
                 else:
                     material = None
 
-                subset_tag = self._subset_to_xml(material, subset_faces[material_index])
-                subset_tag.attrib['id'] = str(material_index)
+                subset_tag = self._subset_to_xml(material, subset_faces[material_index], material_index)
                 subsets_tag.append(subset_tag)
 
         return mesh_tag
@@ -192,26 +191,25 @@ class Exporter:
 
         return face_tag
 
-    def _subset_to_xml(self, material, faces):
+    def _subset_to_xml(self, material, faces, subset_index):
         # Take the material color settings.
         # We might need to add more in the future..
         if material is not None:
-            name = material.name
+            id_ = material.name
             diffuse  = color_as_list(material.diffuse_color) + [material.diffuse_intensity]
             specular = color_as_list(material.specular_color) + [material.specular_alpha]
             emission = [material.emit * diffuse[i] for i in range(4)]
         else:
             # No material associated with subset, use default values:
-            name = 'none'
+            id_ = str(subset_index)
             diffuse  = [1.0, 1.0, 1.0, 1.0]
             specular = [0.0, 0.0, 0.0, 0.0]
             emission = [0.0, 0.0, 0.0, 0.0]
 
         subset_tag = ET.Element('subset')
 
-        # Add name to tag, makes it easier to find back in the file.
-        if name:
-            subset_tag.attrib['name'] = str(name)
+        # Add id to tag, makes it easier to find back in the file.
+        subset_tag.attrib['id'] = str(id_)
 
         # Convert material colors to xml attributes
         c = ['r', 'g', 'b', 'a']
@@ -316,6 +314,7 @@ class Exporter:
 
         # Check every action to see if it's an animation:
         for action in bpy.data.actions:
+            action_start, action_end = action.frame_range
             layer_tags = []
             for group in action.groups:
                 if group.name not in bones:
@@ -343,7 +342,7 @@ class Exporter:
                 # Store the ordered values in tags:
                 for time in ordering:
                     key_tag = ET.Element('key')
-                    key_tag.attrib['frame'] = str(time)
+                    key_tag.attrib['frame'] = str(int(time) - action_start)
                     layer_tag.append(key_tag)
 
                     properties = ordering[time]
@@ -369,12 +368,11 @@ class Exporter:
 
             if len(layer_tags) > 0:
                 animation_tag = ET.Element('animation')
-                animation_tag.attrib['name'] = action.name
+                animation_tag.attrib['id'] = action.name
                 animations_tag.append(animation_tag)
                 animation_tag.extend(layer_tags)
 
-                start, end = action.frame_range
-                length = int(end - start)
+                length = int(action_end - action_start)
                 animation_tag.attrib['length'] = str(length)
 
         return animations_tag
@@ -410,15 +408,17 @@ def get_curve_property_type(path, index):
             return CurvePropertyType.ROT_Y
         elif index == 3:
             return CurvePropertyType.ROT_Z
-    elif path.endswith('.location_vector'):
+    elif path.endswith('.location'):
         if index == 0:
             return CurvePropertyType.LOC_X
         elif index == 1:
             return CurvePropertyType.LOC_Y
         elif index == 2:
             return CurvePropertyType.LOC_Z
+    elif path.endswith('.scale'):
+        raise TypeError("scale bone modifiers are not supported")
     else:
-        raise TypeError("unsupported bone modifier: %s" % path)
+        raise TypeError("unsupported bone modifier: \"%s\"" % path)
 
 
 def extract_rot(properties):
