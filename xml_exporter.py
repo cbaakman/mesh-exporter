@@ -16,7 +16,7 @@
 bl_info = {
     'name': 'Export to xml mesh type (.xml)',
     'author': 'Baakman, Coos',
-    'version': '3.1',
+    'version': '3.2.0',
     'blender': (2, 7, 9),
     'location': 'File > Export',
     'description': 'Export to xml mesh type (.xml)',
@@ -142,7 +142,7 @@ class Exporter:
         pos = self.transform_vertex * vertex.undeformed_co
         norm = self.transform_rotation * vertex.normal
 
-        # Vertex position in space:
+        # Vertex position in mesh space:
         pos_tag = ET.Element('pos')
         pos_tag.attrib['x'] = format_float(pos[0])
         pos_tag.attrib['y'] = format_float(pos[1])
@@ -196,33 +196,14 @@ class Exporter:
         # We might need to add more in the future..
         if material is not None:
             id_ = material.name
-            diffuse  = color_as_list(material.diffuse_color) + [material.diffuse_intensity]
-            specular = color_as_list(material.specular_color) + [material.specular_alpha]
-            emission = [material.emit * diffuse[i] for i in range(4)]
         else:
             # No material associated with subset, use default values:
             id_ = str(subset_index)
-            diffuse  = [1.0, 1.0, 1.0, 1.0]
-            specular = [0.0, 0.0, 0.0, 0.0]
-            emission = [0.0, 0.0, 0.0, 0.0]
 
         subset_tag = ET.Element('subset')
 
         # Add id to tag, makes it easier to find back in the file.
-        subset_tag.attrib['id'] = str(id_)
-
-        # Convert material colors to xml attributes
-        c = ['r', 'g', 'b', 'a']
-        diffuse_tag = ET.Element('diffuse')
-        subset_tag.append(diffuse_tag)
-        specular_tag = ET.Element('specular')
-        subset_tag.append(specular_tag)
-        emission_tag = ET.Element('emission')
-        subset_tag.append(emission_tag)
-        for i in range(4):
-            diffuse_tag.attrib[c[i]] = format_float(diffuse[i])
-            specular_tag.attrib[c[i]] = format_float(specular[i])
-            emission_tag.attrib[c[i]] = format_float(emission[i])
+        subset_tag.attrib['id'] = id_
 
         # Register all the subset's faces in xml tags:
         faces_tag = ET.Element('faces')
@@ -342,7 +323,7 @@ class Exporter:
                 # Store the ordered values in tags:
                 for time in ordering:
                     key_tag = ET.Element('key')
-                    key_tag.attrib['frame'] = str(int(time) - action_start)
+                    key_tag.attrib['frame'] = str(int(time - action_start))
                     layer_tag.append(key_tag)
 
                     properties = ordering[time]
@@ -530,11 +511,15 @@ if __name__ == '__main__':
         script_args = sys.argv[sys.argv.index('--') + 1:]
 
     if len(script_args) >= 2:
-        object_name = script_args[0]
-        xml_path = script_args[1]
+        try:
+            object_name = script_args[0]
+            xml_path = script_args[1]
 
-        obj = find_object(object_name)
-        if obj is None:
-            raise ValueError("object %s not found" % object_name)
+            obj = find_object(object_name)
+            if obj is None:
+                raise ValueError("object %s not found" % object_name)
 
-        Exporter().export(obj, xml_path)
+            Exporter().export(obj, xml_path)
+        except:
+            traceback.print_exc()
+            sys.exit(1)

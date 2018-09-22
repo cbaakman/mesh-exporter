@@ -1,5 +1,7 @@
+# Generated mesh xml files
+*.xml
+
 # Blender files
-*.blend
 *.blend[0-9]
 
 # Editor swap files
@@ -10,8 +12,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
+# Generated binaries
+bin/visual
 *.so
+*.dll
+*.exe
+*.o
+*.a
 
 # Distribution / packaging
 .Python
