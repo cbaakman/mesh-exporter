@@ -8,6 +8,8 @@ It supports:
 The import library does NOT handle rendering. That's up to the executable that imports it.
 The visual test is an example of such an executable. There are however, many other ways to render the imported meshes.
 
+See also the wiki at https://github.com/cbaakman/xml-mesh/wiki to learn how to work with this mesh format.
+
 ## Contents
 * 'xml_exporter.py': the mesh exporter to include in blender
 * An include dir with headers for the imiport library
