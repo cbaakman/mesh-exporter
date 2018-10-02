@@ -407,19 +407,19 @@ public:
         // Position
         glEnableVertexAttribArray(VERTEX_POSITION_INDEX);
         CHECKGL();
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), 0);
+        glVertexAttribPointer(VERTEX_POSITION_INDEX, 3, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), 0);
         CHECKGL();
 
         // Normal
         glEnableVertexAttribArray(VERTEX_NORMAL_INDEX);
         CHECKGL();
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), (GLvoid *)sizeof(vec3));
+        glVertexAttribPointer(VERTEX_NORMAL_INDEX, 3, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), (GLvoid *)sizeof(vec3));
         CHECKGL();
 
         // TexCoords
         glEnableVertexAttribArray(VERTEX_TEXCOORDS_INDEX);
         CHECKGL();
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), (GLvoid *)(2 * sizeof(vec3)));
+        glVertexAttribPointer(VERTEX_TEXCOORDS_INDEX, 2, GL_FLOAT, GL_FALSE, sizeof(MeshRenderVertex), (GLvoid *)(2 * sizeof(vec3)));
         CHECKGL();
 
         glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
