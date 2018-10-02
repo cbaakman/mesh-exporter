@@ -40,7 +40,7 @@ using namespace glm;
 
 namespace XMLMesh
 {
-    class Error: public std::exception
+    class MeshError: public std::exception
     {
         protected:
             char buffer[ERRORBUF_SIZE];
@@ -51,7 +51,7 @@ namespace XMLMesh
     /**
      * Thrown when a key is missing in the MeshData or MeshState object.
      */
-    class MeshKeyError: public Error
+    class MeshKeyError: public MeshError
     {
         public:
             MeshKeyError(const char *format, ...);
@@ -61,7 +61,7 @@ namespace XMLMesh
     /**
      * Thrown when parsing from xml fails.
      */
-    class MeshParseError: public Error
+    class MeshParseError: public MeshError
     {
         public:
             MeshParseError(const char *format, ...);

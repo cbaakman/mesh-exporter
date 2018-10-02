@@ -1,6 +1,6 @@
 CXX = /usr/bin/g++
 CFLAGS = -std=c++17
-VERSION = 3.3.0
+VERSION = 3.3.1
 BLENDER = /usr/bin/blender
 LIB_NAME = xml-mesh
 

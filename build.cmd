@@ -1,6 +1,6 @@
 set CXX=g++
 set CFLAGS=-std=c++17
-set VERSION=3.3.0
+set VERSION=3.3.1
 set LIB_NAME=xml-mesh
 set BLENDER="C:\Program Files\Blender Foundation\Blender\blender.exe"
 

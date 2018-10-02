@@ -40,7 +40,7 @@ namespace XMLMesh
 
         va_end(pArgs);
     }
-    const char *Error::what(void) const noexcept
+    const char *MeshError::what(void) const noexcept
     {
         return buffer;
     }

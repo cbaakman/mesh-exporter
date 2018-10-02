@@ -1,4 +1,4 @@
-# XML Mesh 3.3.0
+# XML Mesh 3.3.1
 An xml mesh format with an exporter for blender 2.79b and a C++ import library.
 It supports:
 * Texture coordinates (UV) per face
