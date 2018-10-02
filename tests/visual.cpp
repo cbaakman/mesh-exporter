@@ -9,11 +9,14 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/format.hpp>
-#include <linear-gl/matrix.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "mesh.h"
 
 
+using namespace glm;
 using namespace XMLMesh;
 
 #define VERTEX_POSITION_INDEX 0
@@ -129,7 +132,6 @@ void CheckGL(const char *filename, const size_t lineNumber)
 };
 
 #define CHECKGL() CheckGL(__FILE__, __LINE__);
-
 
 
 GLuint CreateShader(const std::string &source, GLenum type)
@@ -299,10 +301,11 @@ private:
 
     const MeshState *pMeshState;
 public:
-    MeshRenderer(const MeshState &meshState): pMeshState(&meshState)
+    MeshRenderer(const MeshState *pMS): pMeshState(pMS)
     {
-        size_t quadCount = meshState.mQuads.size(),
-               triangleCount = meshState.mTriangles.size();
+        size_t quadCount, triangleCount;
+        std::tie(quadCount, triangleCount) = pMeshState->CountQuadsTriangles();
+
         vertexCount = 4 * quadCount + 3 * triangleCount;
         indexCount = 6 * quadCount + 3 * triangleCount;
 
@@ -344,48 +347,42 @@ public:
         size_t vertexNumber = 0,
                indexNumber = 0;
 
-        const MeshSubset *pSubset;
         vec3 faceNormal;
-        for (const auto &pair : pMeshState->mSubsets)
+        for (const MeshFace *pFace : pMeshState->IterFaces())
         {
-            pSubset = &(std::get<1>(pair));
-
-            for (const MeshFace *pFace : pSubset->facePs)
+            if (pFace->CountCorners() == 4)
             {
-                if (pFace->countCorners == 4)
-                {
-                    pIndexBuffer[indexNumber++] = vertexNumber;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 1;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 2;
-                    pIndexBuffer[indexNumber++] = vertexNumber;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 2;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 3;
-                }
-                else if (pFace->countCorners == 3)
-                {
-                    pIndexBuffer[indexNumber++] = vertexNumber;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 1;
-                    pIndexBuffer[indexNumber++] = vertexNumber + 2;
-                }
+                pIndexBuffer[indexNumber++] = vertexNumber;
+                pIndexBuffer[indexNumber++] = vertexNumber + 1;
+                pIndexBuffer[indexNumber++] = vertexNumber + 2;
+                pIndexBuffer[indexNumber++] = vertexNumber;
+                pIndexBuffer[indexNumber++] = vertexNumber + 2;
+                pIndexBuffer[indexNumber++] = vertexNumber + 3;
+            }
+            else if (pFace->CountCorners() == 3)
+            {
+                pIndexBuffer[indexNumber++] = vertexNumber;
+                pIndexBuffer[indexNumber++] = vertexNumber + 1;
+                pIndexBuffer[indexNumber++] = vertexNumber + 2;
+            }
+            else
+                throw RenderError(boost::format("encountered a face with %1% corners")
+                                  % pFace->CountCorners());
+
+            if (!pFace->IsSmooth())
+                faceNormal = CalculateFaceNormal(pFace);
+
+            for (const MeshCorner &corner : pFace->IterCorners())
+            {
+                pVertexBuffer[vertexNumber].position = corner.GetVertex()->GetPosition();
+                pVertexBuffer[vertexNumber].texCoords = corner.GetTexCoords();
+
+                if (pFace->IsSmooth())
+                    pVertexBuffer[vertexNumber].normal = CalculateVertexNormal(corner.GetVertex());
                 else
-                    throw RenderError(boost::format("encountered a face with %1% corners")
-                                      % pFace->countCorners);
+                    pVertexBuffer[vertexNumber].normal = faceNormal;
 
-                if (!pFace->smooth)
-                    faceNormal = CalculateFaceNormal(*pFace);
-
-                for (const MeshCorner &corner : pFace->IterCorners())
-                {
-                    pVertexBuffer[vertexNumber].position = corner.pVertex->position;
-                    pVertexBuffer[vertexNumber].texCoords = corner.texCoords;
-
-                    if (pFace->smooth)
-                        pVertexBuffer[vertexNumber].normal = CalculateVertexNormal(*(corner.pVertex));
-                    else
-                        pVertexBuffer[vertexNumber].normal = faceNormal;
-
-                    vertexNumber++;
-                }
+                vertexNumber++;
             }
         }
 
@@ -593,42 +590,25 @@ GLuint MakePNGTexture(const PNGImage &image)
     return tex;
 }
 
-matrix4 MatPerspective(const GLfloat viewAngle, const GLfloat aspect,
-                       const GLfloat nearView, const GLfloat farView)
-{
-    GLfloat f = 1.0f / tan(viewAngle / 2),
-            zdiff = nearView - farView;
-
-    matrix4 m = MatID();
-
-    m[0][0] = f / aspect;
-    m[1][1] = f;
-    m[2][2] = (nearView + farView) / zdiff;
-    m[3][2] = 2 * nearView * farView / zdiff;
-    m[2][3] = -1.0f;
-    m[3][3] = 0.0f;
-
-    return m;
-}
 
 class DemoApp
 {
 private:
     SDL_Window *mainWindow;
     SDL_GLContext mainGLContext;
-    MeshState meshState;
+    MeshState *pMeshState;
     MeshRenderer *pRenderer;
     GLuint shaderProgram;
     GLuint tex;
 
     bool running;
     float angle;
-    std::map<std::string, MeshBoneTransformation> mBoneTransformations;
+    std::unordered_map<std::string, MeshBoneTransformation> mBoneTransformations;
 public:
-    void Init(const MeshData &meshData, const PNGImage &image)
+    void Init(const MeshData *pMeshData, const PNGImage &image)
     {
         int error = SDL_Init(SDL_INIT_EVERYTHING);
-        if(error != 0)
+        if (error != 0)
             throw InitError(boost::format("Unable to initialize SDL: %1%") % SDL_GetError());
 
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -659,9 +639,9 @@ public:
         if (!GLEW_VERSION_3_2)
             throw InitError("OpenGL 3.2 is not supported");
 
-        DeriveMeshState(meshData, meshState);
+        pMeshState = DeriveMeshState(pMeshData);
 
-        pRenderer = new MeshRenderer(meshState);
+        pRenderer = new MeshRenderer(pMeshState);
 
         GLuint vertexShader = CreateShader(meshVertexShaderSrc, GL_VERTEX_SHADER),
                fragmentShader = CreateShader(meshFragmentShaderSrc, GL_FRAGMENT_SHADER);
@@ -684,6 +664,8 @@ public:
 
     void Destroy(void)
     {
+        DestroyMeshState(pMeshState);
+
         glDeleteTextures(1, &tex);
 
         glDeleteProgram(shaderProgram);
@@ -704,14 +686,16 @@ public:
     void Render(void)
     {
         int screenWidth, screenHeight;
-        SDL_GL_GetDrawableSize(mainWindow,
-                               &screenWidth, &screenHeight);
+        SDL_GL_GetDrawableSize(mainWindow, &screenWidth, &screenHeight);
 
-        matrix4 matProjection = MatPerspective(PI / 4, GLfloat(screenWidth) / GLfloat(screenHeight),
-                                               0.1f, 1000.0f),
-                matView = MatTranslate({0.0f, 0.0f, -10.0f}) * MatRotAxis({0.0f, 1.0f, 0.0f}, angle),
+        mat4 matProjection, matView, matNormal;
 
-                matNormal = MatTranspose(MatInverse(matView));
+
+        matProjection = perspective(pi<GLfloat>() / 4, GLfloat(screenWidth) / GLfloat(screenHeight), 0.1f, 1000.0f);
+
+        matView = rotate(translate(matView,  vec3(0.0f, 0.0f, -10.0f)), angle, vec3(0.0f, 1.0f, 0.0f));
+
+        matNormal = transpose(inverse(matView));
 
         glEnable(GL_CULL_FACE);
         CHECKGL();
@@ -750,13 +734,13 @@ public:
         if (normalMatrixLocation == -1)
             throw RenderError("normal matrix location is -1");
 
-        glUniformMatrix4fv(projectionMatrixLocation, 1, GL_FALSE, &matProjection);
+        glUniformMatrix4fv(projectionMatrixLocation, 1, GL_FALSE, value_ptr(matProjection));
         CHECKGL();
 
-        glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE, &matView);
+        glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE, value_ptr(matView));
         CHECKGL();
 
-        glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE, &matNormal);
+        glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE, value_ptr(matNormal));
         CHECKGL();
 
         glActiveTexture(GL_TEXTURE0);
@@ -769,10 +753,10 @@ public:
         pRenderer->Render();
     }
 
-    void RunDemo(const MeshData &meshData,
+    void RunDemo(const MeshData *pMeshData,
                  const PNGImage &image, const char *animationName)
     {
-        Init(meshData, image);
+        Init(pMeshData, image);
 
         boost::posix_time::ptime tStart = boost::posix_time::microsec_clock::local_time(),
                                  tNow;
@@ -792,11 +776,11 @@ public:
 
                 angle = float(delta.total_milliseconds()) / 1000;
 
-                GetBoneTransformationsAt(meshData, animationName,
+                GetBoneTransformationsAt(pMeshData, animationName,
                                          delta.total_milliseconds(), 25.0f, true,
                                          mBoneTransformations);
 
-                ApplyBoneTransformations(meshData, mBoneTransformations, meshState);
+                ApplyBoneTransformations(pMeshData, mBoneTransformations, pMeshState);
 
                 Render();
 
@@ -837,8 +821,18 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    MeshData meshData;
-    ParseMesh(meshFile, meshData);
+    MeshData* pMeshData = NULL;
+    try
+    {
+        pMeshData = ParseMeshData(meshFile);
+    }
+    catch (const std::exception &e)
+    {
+        meshFile.close();
+
+        std::cerr << e.what() << std::endl;
+        return 1;
+    }
     meshFile.close();
 
     boost::filesystem::path imagePath = argv[2];
@@ -864,15 +858,17 @@ int main(int argc, char **argv)
     try
     {
         DemoApp app;
-        app.RunDemo(meshData, image, argv[3]);
+        app.RunDemo(pMeshData, image, argv[3]);
     }
     catch (const std::exception &e)
     {
+        DestroyMeshData(pMeshData);
         imageReader.DeleteImage(image);
 
         std::cerr << e.what() << std::endl;
         return 1;
     }
+    DestroyMeshData(pMeshData);
     imageReader.DeleteImage(image);
     return 0;
 }

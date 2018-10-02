@@ -1,6 +1,6 @@
 set CXX=g++
 set CFLAGS=-std=c++17
-set VERSION=3.2.1
+set VERSION=3.3.0
 set LIB_NAME=xml-mesh
 set BLENDER="C:\Program Files\Blender Foundation\Blender\blender.exe"
 
@@ -20,7 +20,7 @@ del /Q /F /S obj\* bin\%LIB_NAME%-%VERSION%.dll lib\lib%LIB_NAME%.a data\dummy.x
 
 :: Make the library.
 
-@for %%m in (parse iter math animate) do (
+@for %%m in (parse access build math animate error) do (
     %CXX% %CFLAGS% -I include\xml-mesh -c src\%%m.cpp -o obj\%%m.o -fPIC
 
     @if %ERRORLEVEL% neq 0 (
@@ -28,7 +28,7 @@ del /Q /F /S obj\* bin\%LIB_NAME%-%VERSION%.dll lib\lib%LIB_NAME%.a data\dummy.x
     )
 )
 
-%CXX% obj\parse.o obj\iter.o obj\math.o obj\animate.o -lxml2 -llinear-gl ^
+%CXX% obj\parse.o obj\math.o obj\animate.o obj\build.o obj\access.o obj\error.o -lxml2 -llinear-gl ^
 -o bin\%LIB_NAME%-%VERSION%.dll -shared -fPIC -Wl,--out-implib,lib\lib%LIB_NAME%.a
 @if %ERRORLEVEL% neq 0 (
     goto end

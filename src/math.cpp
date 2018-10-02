@@ -25,15 +25,15 @@ namespace XMLMesh
     void CalculateCornerTangentBitangent(const MeshCorner &corner,
                                          vec3 &tangent, vec3 &bitangent)
     {
-        vec3 deltaPosition1 = corner.pPrev->pVertex->position - corner.pVertex->position,
-             deltaPosition2 = corner.pNext->pVertex->position - corner.pVertex->position;
-        vec2 deltaTexCoords1 = corner.pPrev->texCoords - corner.texCoords,
-             deltaTexCoords2 = corner.pNext->texCoords - corner.texCoords;
+        vec3 deltaPosition1 = corner.GetPrev()->GetVertex()->GetPosition() - corner.GetVertex()->GetPosition(),
+             deltaPosition2 = corner.GetNext()->GetVertex()->GetPosition() - corner.GetVertex()->GetPosition();
+        vec2 deltaTexCoords1 = corner.GetPrev()->GetTexCoords() - corner.GetTexCoords(),
+             deltaTexCoords2 = corner.GetNext()->GetTexCoords() - corner.GetTexCoords();
 
-        tangent = Unit((deltaTexCoords2.v * deltaPosition1 - deltaTexCoords1.v * deltaPosition2)
-                       / (deltaTexCoords1.u * deltaTexCoords2.v - deltaTexCoords2.u * deltaTexCoords1.v));
-        bitangent = Unit((deltaTexCoords2.u * deltaPosition1 - deltaTexCoords1.u * deltaPosition2)
-                         / (deltaTexCoords1.v * deltaTexCoords2.u - deltaTexCoords2.v * deltaTexCoords1.u));
+        tangent = normalize((deltaTexCoords2.y * deltaPosition1 - deltaTexCoords1.y * deltaPosition2)
+                       / (deltaTexCoords1.x * deltaTexCoords2.y - deltaTexCoords2.x * deltaTexCoords1.y));
+        bitangent = normalize((deltaTexCoords2.x * deltaPosition1 - deltaTexCoords1.x * deltaPosition2)
+                         / (deltaTexCoords1.y * deltaTexCoords2.x - deltaTexCoords2.y * deltaTexCoords1.x));
     }
 
     /**
@@ -41,55 +41,55 @@ namespace XMLMesh
       */
     vec3 CalculateCornerNormal(const MeshCorner &corner)
     {
-        return Unit(Cross(corner.pVertex->position - corner.pPrev->pVertex->position,
-                          corner.pNext->pVertex->position - corner.pVertex->position));
+        return normalize(cross(corner.GetVertex()->GetPosition() - corner.GetPrev()->GetVertex()->GetPosition(),
+                          corner.GetNext()->GetVertex()->GetPosition() - corner.GetVertex()->GetPosition()));
     }
 
-    vec3 CalculateFaceNormal(const MeshFace &face)
+    vec3 CalculateFaceNormal(const MeshFace *pFace)
     {
         vec3 sum(0.0f, 0.0f, 0.0f);
-        for (const MeshCorner &corner : face.IterCorners())
+        for (const MeshCorner &corner : pFace->IterCorners())
         {
             sum += CalculateCornerNormal(corner);
         }
-        return Unit(sum);
+        return normalize(sum);
     }
 
-    std::tuple<vec3, vec3> CalculateFaceTangentBitangent(const MeshFace &face)
+    std::tuple<vec3, vec3> CalculateFaceTangentBitangent(const MeshFace *pFace)
     {
         vec3 sumTangent(0.0f, 0.0f, 0.0f),
              sumBitangent(0.0f, 0.0f, 0.0f),
              t, b;
-        for (const MeshCorner &corner : face.IterCorners())
+        for (const MeshCorner &corner : pFace->IterCorners())
         {
             CalculateCornerTangentBitangent(corner, t, b);
             sumTangent += t;
             sumBitangent += b;
         }
-        return std::make_tuple(Unit(sumTangent), Unit(sumBitangent));
+        return std::make_tuple(normalize(sumTangent), normalize(sumBitangent));
     }
 
-    vec3 CalculateVertexNormal(const MeshVertex &vertex)
+    vec3 CalculateVertexNormal(const MeshVertex *pVertex)
     {
         vec3 sum(0.0f, 0.0f, 0.0f);
-        for (const MeshCorner *pCorner : vertex.cornersInvolvedPs)
+        for (const MeshCorner *pCorner : pVertex->IterCorners())
         {
             sum += CalculateCornerNormal(*pCorner);
         }
-        return Unit(sum);
+        return normalize(sum);
     }
 
-    std::tuple<vec3, vec3> CalculateVertexTangentBitangent(const MeshVertex &vertex)
+    std::tuple<vec3, vec3> CalculateVertexTangentBitangent(const MeshVertex *pVertex)
     {
         vec3 sumTangent(0.0f, 0.0f, 0.0f),
              sumBitangent(0.0f, 0.0f, 0.0f),
              t, b;
-        for (const MeshCorner *pCorner : vertex.cornersInvolvedPs)
+        for (const MeshCorner *pCorner : pVertex->IterCorners())
         {
             CalculateCornerTangentBitangent(*pCorner, t, b);
             sumTangent += t;
             sumBitangent += b;
         }
-        return std::make_tuple(Unit(sumTangent), Unit(sumBitangent));
+        return std::make_tuple(normalize(sumTangent), normalize(sumBitangent));
     }
 }

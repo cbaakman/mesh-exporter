@@ -14,16 +14,16 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
+#include <list>
+#include <cstring>
 #include <exception>
 #include <math.h>
 
-#include <boost/lexical_cast.hpp>
-#include <boost/format.hpp>
-#include <boost/algorithm/string.hpp>
 #include <libxml/tree.h>
 #include <libxml/parser.h>
 
 #include "mesh.h"
+#include "build.h"
 
 
 namespace XMLMesh
@@ -80,32 +80,21 @@ namespace XMLMesh
     };
 
 
-    class MeshParseError : public std::exception
+    bool iequals(const char *s1, const char *s2)
     {
-        private:
-            std::string message;
-        public:
-            MeshParseError(const std::string &msg)
-            {
-                message = msg;
-            }
+        size_t i;
+        for (i = 0; s1[i] != NULL && s2[i] != NULL; i++)
+            if (toupper(s1[i]) != toupper(s2[i]))
+                return false;
 
-            MeshParseError(const boost::format &fmt)
-            {
-                message = fmt.str();
-            }
-
-            const char *what(void) const noexcept
-            {
-                return message.c_str();
-            }
-    };
+        return s1[i] == s2[i];  // must both be NULL
+    }
 
     bool HasChild(xmlNodePtr pTag, const char *tagName)
     {
         for (xmlNodePtr pChild : XMLChildIterable(pTag))
         {
-            if (boost::iequals((const char *)pChild->name, tagName))
+            if (iequals((const char *)pChild->name, tagName))
                 return true;
         }
         return false;
@@ -115,12 +104,11 @@ namespace XMLMesh
     {
         for (xmlNodePtr pChild : XMLChildIterable(pParent))
         {
-            if (boost::iequals((const char *)pChild->name, tagName))
+            if (iequals((const char *)pChild->name, tagName))
                 return pChild;
         }
 
-        throw MeshParseError(boost::format("No %1% tag found in %2% tag")
-                         % tagName % ((const char *)pParent->name));
+        throw MeshParseError("No %s tag found in %s tag", tagName, (const char *)pParent->name);
     }
 
     std::list<xmlNodePtr> IterFindChildren(xmlNodePtr pParent, const char *tagName)
@@ -129,7 +117,7 @@ namespace XMLMesh
 
         for (xmlNodePtr pChild : XMLChildIterable(pParent))
         {
-            if (boost::iequals((const char *)pChild->name, tagName))
+            if (iequals((const char *)pChild->name, tagName))
                 l.push_back(pChild);
         }
 
@@ -272,11 +260,11 @@ namespace XMLMesh
 
     void ParseBool(const char *s, bool &b)
     {
-        if (boost::equals("0", s))
+        if (strcmp("0", s) == 0)
             b = false;
-        else if (boost::iequals("true", s))
+        else if (iequals("true", s))
             b = true;
-        else if (boost::iequals("false", s))
+        else if (iequals("false", s))
             b = false;
         else
             b = true;
@@ -286,8 +274,7 @@ namespace XMLMesh
     {
         xmlChar *pS = xmlGetProp(pTag, key);
         if (pS == nullptr)
-            throw MeshParseError(boost::format("Missing %1% attribute: %2%")
-                             % ((const char *)pTag->name) % ((const char *)key));
+            throw MeshParseError("Missing %s attribute: %s", (const char *)pTag->name, (const char *)key);
 
         s.assign((const char *)pS);
         xmlFree(pS);
@@ -297,8 +284,7 @@ namespace XMLMesh
     {
         xmlChar *pS = xmlGetProp(pTag, key);
         if (pS == nullptr)
-            throw MeshParseError(boost::format("Missing %1% attribute: %2%")
-                             % ((const char *)pTag->name) % ((const char *)key));
+            throw MeshParseError("Missing %s attribute: %s", (const char *)pTag->name, (const char *)key);
 
         ParseBool((const char *)pS, b);
 
@@ -309,140 +295,117 @@ namespace XMLMesh
     {
         xmlChar *pS = xmlGetProp(pTag, key);
         if (pS == nullptr)
-            throw MeshParseError(boost::format("Missing %1% attribute: %2%")
-                             % ((const char *)pTag->name) % ((const char *)key));
+            throw MeshParseError("Missing %s attribute: %s", (const char *)pTag->name, (const char *)key);
 
         if (!ParseFloat((const char *)pS, f))
         {
             xmlFree(pS);
-            throw MeshParseError(boost::format("Malformed floating point: %1%")
-                             % ((const char *)pS));
+            throw MeshParseError("Malformed floating point: %s", (const char *)pS);
         }
         xmlFree(pS);
     }
 
-    void ParseLengthAttrib(const xmlNodePtr pTag, const xmlChar *key, size_t &i)
+    void ParseLengthAttrib(const xmlNodePtr pTag, const xmlChar *key, size_t &length)
     {
         xmlChar *pS = xmlGetProp(pTag, key);
         if (pS == nullptr)
-            throw MeshParseError(boost::format("Missing %1% attribute: %2%")
-                             % ((const char *)pTag->name) % ((const char *)key));
-        try
+            throw MeshParseError("Missing %s attribute: %s",(const char *)pTag->name, (const char *)key);
+
+        int i = atoi((const char *)pS);
+        if (i < 0)
         {
-            i = boost::lexical_cast<size_t>((const char *)pS);
-        }
-        catch(...)
-        {
+            MeshParseError err("%s cannot be %s", (const char *)key, (const char *)pS);
             xmlFree(pS);
-            std::rethrow_exception(std::current_exception());
+            throw err;
         }
+
+        length = i;
         xmlFree(pS);
     }
 
-    void ParseVertex(const xmlNodePtr pVertexTag, MeshData &meshData)
+    void ParseVertex(const xmlNodePtr pVertexTag, MeshDataBuilder &builder)
     {
         std::string id;
         ParseStringAttrib(pVertexTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mVertices, id))
-            throw MeshParseError(boost::format("duplicate vertex id: %1%") % id);
-        meshData.mVertices[id].id = id;
-
         xmlNodePtr pPositionTag = FindChild(pVertexTag, "pos");
 
-        ParseFloatAttrib(pPositionTag, (const xmlChar *)"x", meshData.mVertices[id].position.x);
-        ParseFloatAttrib(pPositionTag, (const xmlChar *)"y", meshData.mVertices[id].position.y);
-        ParseFloatAttrib(pPositionTag, (const xmlChar *)"z", meshData.mVertices[id].position.z);
+        vec3 position;
+        ParseFloatAttrib(pPositionTag, (const xmlChar *)"x", position.x);
+        ParseFloatAttrib(pPositionTag, (const xmlChar *)"y", position.y);
+        ParseFloatAttrib(pPositionTag, (const xmlChar *)"z", position.z);
+
+        builder.AddVertex(id, position);
     }
 
-    void ParseCorner(const xmlNodePtr pCornerTag,
-                     MeshData &meshData, MeshCorner &corner)
+    void ParseCorner(const xmlNodePtr pCornerTag, MeshTexCoords &texCoords, std::string &vertexID)
     {
-        std::string vertexID;
         ParseStringAttrib(pCornerTag, (const xmlChar *)"vertex_id", vertexID);
 
-        if (!HAS_ID(meshData.mVertices, vertexID))
-            throw MeshParseError(boost::format("No such vertex: %1%") % vertexID);
-
-        corner.pVertex = &(meshData.mVertices[vertexID]);
-
-        ParseFloatAttrib(pCornerTag, (const xmlChar *)"tex_u", corner.texCoords.u);
-        ParseFloatAttrib(pCornerTag, (const xmlChar *)"tex_v", corner.texCoords.v);
+        ParseFloatAttrib(pCornerTag, (const xmlChar *)"tex_u", texCoords.x);
+        ParseFloatAttrib(pCornerTag, (const xmlChar *)"tex_v", texCoords.y);
     }
 
-    void Connect(MeshFace *pFace, MeshCorner *pCorners, const size_t cornerCount)
-    {
-        size_t i, iprev, inext;
-        for (i = 0; i < cornerCount; i++)
-        {
-            iprev = (cornerCount + i - 1) % cornerCount;
-            inext = (i + 1) % cornerCount;
-
-            pCorners[i].pFace = pFace;
-            pCorners[i].pVertex->cornersInvolvedPs.push_back(&(pCorners[i]));
-            pCorners[i].pPrev = &(pCorners[iprev]);
-            pCorners[i].pNext = &(pCorners[inext]);
-        }
-    }
-
-    void ParseQuadFace(const xmlNodePtr pQuadTag, MeshData &meshData)
+    void ParseQuadFace(const xmlNodePtr pQuadTag, MeshDataBuilder &builder)
     {
         std::string id;
         ParseStringAttrib(pQuadTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mQuads, id) || HAS_ID(meshData.mTriangles, id))
-            throw MeshParseError(boost::format("duplicate face id: %1%") % id);
-        meshData.mQuads[id].id = id;
-
-        ParseBoolAttrib(pQuadTag, (const xmlChar *)"smooth", meshData.mQuads[id].smooth);
+        bool smooth;
+        ParseBoolAttrib(pQuadTag, (const xmlChar *)"smooth", smooth);
 
         size_t count = 0;
+        MeshTexCoords tx[4];
+        std::string vIDs[4];
         for (xmlNodePtr pCornerTag : IterFindChildren(pQuadTag, "corner"))
         {
-            ParseCorner(pCornerTag, meshData,
-                        meshData.mQuads[id].mCorners[count]);
+            if (count < 4)
+            {
+                ParseCorner(pCornerTag, tx[count], vIDs[count]);
+            }
             count++;
         }
 
         if (count != 4)
-            throw MeshParseError(boost::format("encountered a quad with %1% corners") % count);
+            throw MeshParseError("encountered a quad with %u corners", count);
 
-        Connect(&(meshData.mQuads[id]), meshData.mQuads[id].mCorners, 4);
+        builder.AddQuad(id, smooth, tx, vIDs);
     }
 
-    void ParseTriangleFace(const xmlNodePtr pTriangleTag, MeshData &meshData)
+    void ParseTriangleFace(const xmlNodePtr pTriangleTag, MeshDataBuilder &builder)
     {
         std::string id;
         ParseStringAttrib(pTriangleTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mQuads, id) || HAS_ID(meshData.mTriangles, id))
-            throw MeshParseError(boost::format("duplicate face id: %1%") % id);
-        meshData.mTriangles[id].id = id;
-
-        ParseBoolAttrib(pTriangleTag, (const xmlChar *)"smooth", meshData.mTriangles[id].smooth);
+        bool smooth;
+        ParseBoolAttrib(pTriangleTag, (const xmlChar *)"smooth", smooth);
 
         size_t count = 0;
+        MeshTexCoords tx[3];
+        std::string vIDs[3];
         for (xmlNodePtr pCornerTag : IterFindChildren(pTriangleTag, "corner"))
         {
-            ParseCorner(pCornerTag, meshData,
-                        meshData.mTriangles[id].mCorners[count]);
+            if (count < 3)
+            {
+                ParseCorner(pCornerTag, tx[count], vIDs[count]);
+            }
             count++;
         }
 
         if (count != 3)
-            throw MeshParseError(boost::format("encountered a triangle with %1% corners") % count);
+            throw MeshParseError("encountered a triangle with %u corners", count);
 
-        Connect(&(meshData.mTriangles[id]), meshData.mTriangles[id].mCorners, 3);
+        builder.AddTriangle(id, smooth, tx, vIDs);
     }
 
-    void ParseSubset(const xmlNodePtr pSubsetTag, MeshData &meshData)
+    void ParseSubset(const xmlNodePtr pSubsetTag, MeshDataBuilder &builder)
     {
+        const MeshFace *pFace;
+
         std::string id;
         ParseStringAttrib(pSubsetTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mSubsets, id))
-            throw MeshParseError(boost::format("duplicate subset id: %1%") % id);
-        meshData.mSubsets[id].id = id;
+        builder.AddSubset(id);
 
         xmlNodePtr pFacesTag = FindChild(pSubsetTag, "faces");
         for (xmlNodePtr pQuadTag : IterFindChildren(pFacesTag, "quad"))
@@ -450,42 +413,31 @@ namespace XMLMesh
             std::string quadID;
             ParseStringAttrib(pQuadTag, (const xmlChar *)"id", quadID);
 
-            if (!HAS_ID(meshData.mQuads, quadID))
-                throw MeshParseError(boost::format("No such quad: %1%") % quadID);
-
-            meshData.mSubsets[id].facePs.push_back(&(meshData.mQuads[quadID]));
+            builder.AddQuadToSubset(id, quadID);
         }
         for (xmlNodePtr pTriangleTag : IterFindChildren(pFacesTag, "triangle"))
         {
             std::string triangleID;
             ParseStringAttrib(pTriangleTag, (const xmlChar *)"id", triangleID);
 
-            if (!HAS_ID(meshData.mTriangles, triangleID))
-                throw MeshParseError(boost::format("No such triangle: %1%") % triangleID);
-
-            meshData.mSubsets[id].facePs.push_back(&(meshData.mTriangles[triangleID]));
+            builder.AddTriangleToSubset(id, triangleID);
         }
     }
 
-    void ParseBone(const xmlNodePtr pBoneTag, MeshData &meshData)
+    void ParseBone(const xmlNodePtr pBoneTag, MeshDataBuilder &builder)
     {
         std::string id;
         ParseStringAttrib(pBoneTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mBones, id))
-            throw MeshParseError(boost::format("duplicate bone id: %1%") % id);
-        meshData.mBones[id].id = id;
-        meshData.mBones[id].pParent = nullptr;
+        vec3 headPosition;
+        ParseFloatAttrib(pBoneTag, (const xmlChar *)"x", headPosition.x);
+        ParseFloatAttrib(pBoneTag, (const xmlChar *)"y", headPosition.y);
+        ParseFloatAttrib(pBoneTag, (const xmlChar *)"z", headPosition.z);
 
-        ParseFloatAttrib(pBoneTag, (const xmlChar *)"x",
-                         meshData.mBones[id].headPosition.x);
-        ParseFloatAttrib(pBoneTag, (const xmlChar *)"y",
-                         meshData.mBones[id].headPosition.y);
-        ParseFloatAttrib(pBoneTag, (const xmlChar *)"z",
-                         meshData.mBones[id].headPosition.z);
+        float weight;
+        ParseFloatAttrib(pBoneTag, (const xmlChar *)"weight", weight);
 
-        ParseFloatAttrib(pBoneTag, (const xmlChar *)"weight",
-                         meshData.mBones[id].weight);
+        builder.AddBone(id, headPosition, weight);
 
         if (HasChild(pBoneTag, "vertices"))
         {
@@ -495,108 +447,84 @@ namespace XMLMesh
                 std::string vertexID;
                 ParseStringAttrib(pVertexTag, (const xmlChar *)"id", vertexID);
 
-                if (!HAS_ID(meshData.mVertices, vertexID))
-                    throw MeshParseError(boost::format("No such vertex: %1%") % vertexID);
-
-                meshData.mBones[id].vertexPs.push_back(&(meshData.mVertices[vertexID]));
-                meshData.mVertices[vertexID].bonesPullingPs.push_back(&(meshData.mBones[id]));
+                builder.ConnectBoneToVertex(id, vertexID);
             }
         }
-    }
-
-    void ConnectBone(const xmlNodePtr pBoneTag, std::map<std::string, MeshBone> &bones)
-    {
-        std::string id;
-        ParseStringAttrib(pBoneTag, (const xmlChar *)"id", id);
 
         std::string parentID;
         if (xmlHasProp(pBoneTag, (const xmlChar *)"parent_id"))
         {
             ParseStringAttrib(pBoneTag, (const xmlChar *)"parent_id", parentID);
 
-            if (!HAS_ID(bones, parentID))
-                throw MeshParseError(boost::format("No such bone: %1%") % parentID);
-
-            bones[id].pParent = &(bones[parentID]);
+            builder.ConnectBones(parentID, id);
         }
     }
 
-    void ParseKey(const xmlNodePtr pKeyTag, MeshBoneLayer &layer)
+    void ParseKey(const xmlNodePtr pKeyTag,
+                  const std::string animationID, const std::string &boneID,
+                  MeshDataBuilder &builder)
     {
         size_t frame;
         ParseLengthAttrib(pKeyTag, (const xmlChar *)"frame", frame);
 
-        layer.mKeys[frame].frame = frame;
-        layer.mKeys[frame].transformation.rotation = QUATERNION_ID;
-        layer.mKeys[frame].transformation.translation = VEC3_ZERO;
+        MeshBoneTransformation transformation = MESHBONETRANSFORM_ID;
 
         if (xmlHasProp(pKeyTag, (const xmlChar *)"x"))
         {
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"x",
-                             layer.mKeys[frame].transformation.translation.x);
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"y",
-                             layer.mKeys[frame].transformation.translation.y);
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"z",
-                             layer.mKeys[frame].transformation.translation.z);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"x", transformation.translation.x);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"y", transformation.translation.y);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"z", transformation.translation.z);
         }
         if (xmlHasProp(pKeyTag, (const xmlChar *)"rot_x"))
         {
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_x",
-                             layer.mKeys[frame].transformation.rotation.x);
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_y",
-                             layer.mKeys[frame].transformation.rotation.y);
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_z",
-                             layer.mKeys[frame].transformation.rotation.z);
-            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_w",
-                             layer.mKeys[frame].transformation.rotation.w);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_x", transformation.rotation.x);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_y", transformation.rotation.y);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_z", transformation.rotation.z);
+            ParseFloatAttrib(pKeyTag, (const xmlChar *)"rot_w", transformation.rotation.w);
         }
+
+        builder.AddKey(animationID, boneID, frame, transformation);
     }
 
-    void ParseLayer(const xmlNodePtr pLayerTag,
-                    MeshSkeletalAnimation &animation,
-                    MeshData &meshData)
+    void ParseLayer(const xmlNodePtr pLayerTag, const std::string &animationID, MeshDataBuilder &builder)
     {
         std::string boneID;
         ParseStringAttrib(pLayerTag, (const xmlChar *)"bone_id", boneID);
 
-        if (!HAS_ID(meshData.mBones, boneID))
-            throw MeshParseError(boost::format("No such bone: %1%") % boneID);
-
-        animation.mLayers[boneID].pBone = &(meshData.mBones[boneID]);
+        builder.AddLayer(animationID, boneID);
 
         size_t countKeys = 0;
         for (xmlNodePtr pKeyTag : IterFindChildren(pLayerTag, "key"))
         {
-            ParseKey(pKeyTag, animation.mLayers[boneID]);
+            ParseKey(pKeyTag, animationID, boneID, builder);
             countKeys++;
         }
 
         if (countKeys <= 0)
-            throw MeshParseError(boost::format("Layer %1% in animation %2% has no keys") % boneID % animation.id);
+            throw MeshParseError("Layer %s in animation %s has no keys", boneID.c_str(), animationID.c_str());
     }
 
-    void ParseAnimation(const xmlNodePtr pAnimationTag, MeshData &meshData)
+    void ParseAnimation(const xmlNodePtr pAnimationTag, MeshDataBuilder &builder)
     {
         std::string id;
         ParseStringAttrib(pAnimationTag, (const xmlChar *)"id", id);
 
-        if (HAS_ID(meshData.mAnimations, id))
-            throw MeshParseError(boost::format("duplicate animation id: %1%") % id);
-        meshData.mAnimations[id].id = id;
-
         size_t length;
         ParseLengthAttrib(pAnimationTag, (const xmlChar *)"length", length);
-        meshData.mAnimations[id].length = length;
+
+        builder.AddAnimation(id, length);
 
         for (xmlNodePtr pLayerTag : IterFindChildren(pAnimationTag, "layer"))
         {
-            ParseLayer(pLayerTag, meshData.mAnimations[id], meshData);
+            ParseLayer(pLayerTag, id, builder);
         }
     }
 
-    void ParseMesh(std::istream &is, MeshData &meshData)
+    MeshData *ParseMeshData(std::istream &is)
     {
         const xmlDocPtr pDoc = ParseXML(is);
+
+        MeshDataBuilder builder;
 
         try
         {
@@ -604,32 +532,32 @@ namespace XMLMesh
             if(pRoot == nullptr)
                 throw MeshParseError("no root element found in xml tree");
 
-            if (!boost::iequals((const char *)pRoot->name, "mesh"))
-                throw MeshParseError("no root element is not \"mesh\"");
+            if (!iequals((const char *)pRoot->name, "mesh"))
+                throw MeshParseError("root element is not \"mesh\"");
 
             // First, parse all the vertices.
             xmlNodePtr pVerticesTag = FindChild(pRoot, "vertices");
             for (xmlNodePtr pVertexTag : IterFindChildren(pVerticesTag, "vertex"))
             {
-                ParseVertex(pVertexTag, meshData);
+                ParseVertex(pVertexTag, builder);
             }
 
             // Next, the faces that connect the vertices.
             xmlNodePtr pFacesTag = FindChild(pRoot, "faces");
             for (xmlNodePtr pQuadTag : IterFindChildren(pFacesTag, "quad"))
             {
-                ParseQuadFace(pQuadTag, meshData);
+                ParseQuadFace(pQuadTag, builder);
             }
             for (xmlNodePtr pTriangleTag : IterFindChildren(pFacesTag, "triangle"))
             {
-                ParseTriangleFace(pTriangleTag, meshData);
+                ParseTriangleFace(pTriangleTag, builder);
             }
 
             // Then, the subsets that contain faces.
             xmlNodePtr pSubsetsTag = FindChild(pRoot, "subsets");
             for (xmlNodePtr pSubsetTag : IterFindChildren(pSubsetsTag, "subset"))
             {
-                ParseSubset(pSubsetTag, meshData);
+                ParseSubset(pSubsetTag, builder);
             }
 
             if (HasChild(pRoot, "armature"))
@@ -639,12 +567,7 @@ namespace XMLMesh
                 xmlNodePtr pBonesTag = FindChild(pArmatureTag, "bones");
                 for (xmlNodePtr pBoneTag : IterFindChildren(pBonesTag, "bone"))
                 {
-                    ParseBone(pBoneTag, meshData);
-                }
-                // Now that the bones are there, connect them to each other.
-                for (xmlNodePtr pBoneTag : IterFindChildren(pBonesTag, "bone"))
-                {
-                    ConnectBone(pBoneTag, meshData.mBones);
+                    ParseBone(pBoneTag, builder);
                 }
 
                 if (HasChild(pArmatureTag, "animations"))
@@ -653,7 +576,7 @@ namespace XMLMesh
                     xmlNodePtr pAnimationsTag = FindChild(pArmatureTag, "animations");
                     for (xmlNodePtr pAnimationTag : IterFindChildren(pAnimationsTag, "animation"))
                     {
-                        ParseAnimation(pAnimationTag, meshData);
+                        ParseAnimation(pAnimationTag, builder);
                     }
                 }
             }
@@ -666,5 +589,6 @@ namespace XMLMesh
         }
 
         xmlFreeDoc(pDoc);
+        return builder.GetMeshData();
     }
 }

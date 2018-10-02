@@ -19,113 +19,60 @@
 #include <algorithm>
 #include <climits>
 
-#include <boost/format.hpp>
 #include <linear-gl/matrix.h>
 
 #include "mesh.h"
+#include "build.h"
 
 
 namespace XMLMesh
 {
-    class MeshKeyError: public std::exception
+    MeshState *DeriveMeshState(const MeshData *pMeshData)
     {
-        private:
-            std::string message;
-        public:
-            MeshKeyError(const std::string &msg)
-            {
-                message = msg;
-            }
-            MeshKeyError(const boost::format &fmt)
-            {
-                message = fmt.str();
-            }
+        MeshStateBuilder builder;
 
-            const char *what(void) const noexcept
-            {
-                return message.c_str();
-            }
-    };
-
-    void CopyVertex(const std::string &vertexID, const MeshVertex &vertex, MeshState &meshState)
-    {
-        meshState.mVertices[vertexID].id = vertexID;
-        meshState.mVertices[vertexID].position = vertex.position;
-    }
-
-    void CopyCorners(const MeshFace &srcFace, const size_t cornerCount, MeshFace &dstFace, MeshState &meshState)
-    {
-        size_t i, iprev, inext;
-        std::string vertexID;
-        for (i = 0; i < cornerCount; i++)
-        {
-            iprev = (cornerCount + i - 1) % cornerCount;
-            inext = (i + 1) % cornerCount;
-
-            dstFace.mCorners[i].texCoords = srcFace.mCorners[i].texCoords;
-            vertexID = srcFace.mCorners[i].pVertex->id;
-            if (!HAS_ID(meshState.mVertices, vertexID))
-                throw MeshKeyError(boost::format("No such vertex in mesh state: %1%") % vertexID);
-
-            // Connect everything.
-            dstFace.mCorners[i].pVertex = &(meshState.mVertices[vertexID]);
-            meshState.mVertices[vertexID].cornersInvolvedPs.push_back(&(dstFace.mCorners[i]));
-            dstFace.mCorners[i].pFace = &dstFace;
-            dstFace.mCorners[i].pPrev = &(dstFace.mCorners[iprev]);
-            dstFace.mCorners[i].pNext = &(dstFace.mCorners[inext]);
-        }
-    }
-
-    void CopyQuad(const std::string &quadID, const MeshQuadFace &quad, MeshState &meshState)
-    {
-        meshState.mQuads[quadID].id = quadID;
-        meshState.mQuads[quadID].smooth = quad.smooth;
-
-        CopyCorners(quad, 4, meshState.mQuads[quadID], meshState);
-    }
-
-    void CopyTriangle(const std::string &triangleID, const MeshTriangleFace &triangle, MeshState &meshState)
-    {
-        meshState.mTriangles[triangleID].id = triangleID;
-        meshState.mTriangles[triangleID].smooth = triangle.smooth;
-
-        CopyCorners(triangle, 3, meshState.mTriangles[triangleID], meshState);
-    }
-
-    void CopySubset(const std::string &subsetID, const MeshSubset &subset, MeshState &meshState)
-    {
-        std::string faceID;
-
-        meshState.mSubsets[subsetID].id = subsetID;
-
-        for (const MeshFace *pFace : subset.facePs)
-        {
-            faceID = pFace->id;
-
-            if (HAS_ID(meshState.mQuads, faceID))
-                meshState.mSubsets[subsetID].facePs.push_back(&meshState.mQuads[faceID]);
-            else if (HAS_ID(meshState.mTriangles, faceID))
-                meshState.mSubsets[subsetID].facePs.push_back(&meshState.mTriangles[faceID]);
-            else
-                throw MeshKeyError(boost::format("No such face: %1%") % faceID);
-        }
-    }
-
-    void DeriveMeshState(const MeshData &meshData, MeshState &meshState)
-    {
         // First copy the vertices.
-        for (const auto &pair : meshData.mVertices)
-            CopyVertex(std::get<0>(pair), std::get<1>(pair), meshState);
+        for (const MeshVertex *pVertex : pMeshData->IterVertices())
+        {
+            builder.AddVertex(pVertex->GetID(), pVertex->GetPosition());
+        }
+
+        MeshTexCoords txs[4];
+        std::string vertexIDs[4];
+        size_t i;
 
         // Next copy the faces, that connect the vertices.
-        for (const auto &pair : meshData.mQuads)
-            CopyQuad(std::get<0>(pair), std::get<1>(pair), meshState);
-        for (const auto &pair : meshData.mTriangles)
-            CopyTriangle(std::get<0>(pair), std::get<1>(pair), meshState);
+        for (const MeshFace *pFace : pMeshData->IterFaces())
+        {
+            if (pFace->CountCorners() > 4 || pFace->CountCorners() < 3)
+                throw MeshKeyError("face %s has %u corners", pFace->GetID(), pFace->CountCorners());
+
+            for (i = 0; i < pFace->CountCorners(); i++)
+            {
+                txs[i] = pFace->GetCorners()[i].GetTexCoords();
+                vertexIDs[i] = pFace->GetCorners()[i].GetVertex()->GetID();
+            }
+
+            if (pFace->CountCorners() == 4)
+                builder.AddQuad(pFace->GetID(), pFace->IsSmooth(), txs, vertexIDs);
+            else if (pFace->CountCorners() == 3)
+                builder.AddTriangle(pFace->GetID(), pFace->IsSmooth(), txs, vertexIDs);
+        }
 
         // Finally copy the subset, holding the faces.
-        for (const auto &pair : meshData.mSubsets)
-            CopySubset(std::get<0>(pair), std::get<1>(pair), meshState);
+        for (const MeshSubset *pSubset : pMeshData->IterSubsets())
+        {
+            builder.AddSubset(pSubset->GetID());
+            for (const MeshFace *pFace : pSubset->IterFaces())
+            {
+                if (pFace->CountCorners() == 4)
+                    builder.AddQuadToSubset(pSubset->GetID(), pFace->GetID());
+                else if (pFace->CountCorners() == 3)
+                    builder.AddTriangleToSubset(pSubset->GetID(), pFace->GetID());
+            }
+        }
+
+        return builder.GetMeshState();
     }
 
     MeshBoneTransformation Interpolate(const MeshBoneTransformation &t0,
@@ -134,7 +81,7 @@ namespace XMLMesh
     {
         MeshBoneTransformation r;
 
-        r.rotation = Slerp(t0.rotation, t1.rotation, s);
+        r.rotation = slerp(t0.rotation, t1.rotation, s);
         r.translation = (1.0f - s) * t0.translation + s * t1.translation;
 
         return r;
@@ -157,11 +104,6 @@ namespace XMLMesh
         return std::min((float)ms, msMax) / msPerFrame;
     }
 
-
-    void BoneTransformationToMatrix(const MeshBoneTransformation &t, matrix4 &m)
-    {
-        m = MatTranslate(t.translation) * MatQuat(t.rotation);
-    }
 
     /**
      *  Precondition is that 'frame' is between 0 and 'animationLength'.
@@ -247,14 +189,11 @@ namespace XMLMesh
             distanceToNext = float(frameNext) - frame;
     }
 
-    void GetBoneTransformationsAt(const MeshData &meshData, const std::string &animationID,
+    void GetBoneTransformationsAt(const MeshData *pMeshData, const std::string &animationID,
                                   const milliseconds ms, const float framesPerSecond, const bool loop,
-                                  std::map<std::string, MeshBoneTransformation> &transformationsOut)
+                                  std::unordered_map<std::string, MeshBoneTransformation> &transformationsOut)
     {
-        if (!HAS_ID(meshData.mAnimations, animationID))
-            throw MeshKeyError(boost::format("No such animation: %1%") % animationID);
-
-        const MeshSkeletalAnimation *pAnimation = &(meshData.mAnimations.at(animationID));
+        const MeshSkeletalAnimation *pAnimation = pMeshData->GetAnimation(animationID);
 
         float frame;
         if (loop)
@@ -293,41 +232,39 @@ namespace XMLMesh
         }
     }
 
-    const MeshBoneTransformation MESHBONETRANSFORM_ID = {QUATERNION_ID, VEC3_ZERO};
+    const MeshBoneTransformation MESHBONETRANSFORM_ID = {quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(0.0f)};
 
-    void ApplyBoneTransformations(const MeshData &meshData,
-                                  const std::map<std::string, MeshBoneTransformation> &boneTransformations,
-                                  MeshState &meshStateOut)
+
+    void ApplyBoneTransformations(const MeshData *pMeshData,
+                                  const std::unordered_map<std::string, MeshBoneTransformation> &boneTransformations,
+                                  MeshState *pMeshState)
     {
-        const MeshVertex *pVertex;
         float pullWeight;
         vec3 transformedPosition, pivot;
         MeshBoneTransformation t;
-        for (const auto &pair : meshData.mVertices)
+        for (const MeshVertex *pVertex : pMeshData->IterVertices())
         {
-            pVertex = &(std::get<1>(pair));
-
             float sumWeight = 0.0f;
-            vec3 sumPosition = VEC3_ZERO;
+            vec3 sumPosition(0.0f);
 
-            for (const MeshBone *pBone : pVertex->bonesPullingPs)
+            for (const MeshBone *pBone : pVertex->IterBones())
             {
-                pullWeight = pBone->weight;
-                transformedPosition = pVertex->position;
+                pullWeight = pBone->GetWeight();
+                transformedPosition = pVertex->GetPosition();
 
                 while (pBone != NULL)
                 {
-                    if (HAS_ID(boneTransformations, pBone->id))
+                    if (HAS_ID(boneTransformations, pBone->GetID()))
                     {
-                        t = boneTransformations.at(pBone->id);
+                        t = boneTransformations.at(pBone->GetID());
 
-                        pivot = pBone->headPosition;
+                        pivot = pBone->GetHeadPosition();
 
-                        transformedPosition = Rotate(t.rotation, transformedPosition - pivot) + pivot + t.translation;
+                        transformedPosition = t.rotation * (transformedPosition - pivot) + pivot + t.translation;
                     }
                     // else assume in rest position
 
-                    pBone = pBone->pParent;
+                    pBone = pBone->GetParent();
                 }
 
                 sumPosition += transformedPosition * pullWeight;
@@ -335,7 +272,7 @@ namespace XMLMesh
             }
 
             // Average over all bones pulling directly at this vertex.
-            meshStateOut.mVertices[pVertex->id].position = sumPosition / sumWeight;
+            pMeshState->GetVertex(pVertex->GetID())->SetPosition(sumPosition / sumWeight);
         }
     }
 }

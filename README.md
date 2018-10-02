@@ -1,4 +1,4 @@
-# XML Mesh 3.2.1
+# XML Mesh 3.3.0
 An xml mesh format with an exporter for blender 2.79b and a C++ import library.
 It supports:
 * Texture coordinates (UV) per face
@@ -21,18 +21,18 @@ The exporter requires Blender 2.79b or higher. (https://www.blender.org/)
 
 The importer requires:
 * GNU/MinGW C++ compiler 4.7 or higher.
-* Linear GL 1.1.2 or higher: https://github.com/cbaakman/linear-gl/releases
-* Boost 1.62.0 or higher: https://www.boost.org/doc/libs/1_62_0/more/getting_started/windows.html
+* GLM 0.9.9.2 or higher: https://glm.g-truc.net/0.9.9/index.html
 * LibXML 2.0 or higher: http://xmlsoft.org/
 
 For the visual test, the following is also required:
+* Boost 1.62.0 or higher: https://www.boost.org/doc/libs/1_62_0/more/getting_started/windows.html
 * LibPNG 1.6.35 or higher: http://www.libpng.org/pub/png/libpng.html
 * OpenGL 3.2 or higher, should be installed on your OS by default, if the hardware supports it.
 * GLEW 2.1.0 or higher: http://glew.sourceforge.net/
 * LibSDL 2.0.8 or higher: https://www.libsdl.org/download-2.0.php
 
 The 'build.cmd' and 'Makefile' builder scripts assume that these dependencies are located in the build path.
-To make them work, you might need to modify these scripts yourself or add/change environment variables.
+If not, then you might need to modify these scripts yourself or add/change environment variables.
 
 ## Building the import library
 On linux, run 'make'. It will generate a .so file under 'lib'.
@@ -41,7 +41,7 @@ On Windows run 'build.cmd'. It will generate a .dll file under 'bin' and an impo
 
 ## Running the visual test
 For the visual test, the blender exporter will be used to generate an xml mesh file.
-This file will then be imported into an executable that shows it in a window.
+This file will then be imported into an executable that shows the 3d model in a window.
 
 On Linux, run 'make test'.
 

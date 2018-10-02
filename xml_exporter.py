@@ -16,7 +16,7 @@
 bl_info = {
     'name': 'Export to xml mesh type (.xml)',
     'author': 'Baakman, Coos',
-    'version': '3.2.1',
+    'version': '3.3.0',
     'blender': (2, 7, 9),
     'location': 'File > Export',
     'description': 'Export to xml mesh type (.xml)',

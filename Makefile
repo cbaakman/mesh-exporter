@@ -1,6 +1,6 @@
 CXX = /usr/bin/g++
 CFLAGS = -std=c++17
-VERSION = 3.2.1
+VERSION = 3.3.0
 BLENDER = /usr/bin/blender
 LIB_NAME = xml-mesh
 
@@ -12,7 +12,7 @@ test: bin/visual data/dummy.xml
 	bin/visual data/dummy.xml data/dummy.png run
 
 clean:
-	rm -f bin/visual obj/* lib/* data/dummy.xml
+	rm -f bin/visual obj/* lib/* data/dummy.xml core
 
 
 data/dummy.xml: data/dummy.blend
@@ -23,9 +23,9 @@ bin/visual: lib/lib$(LIB_NAME).so.$(VERSION) include/xml-mesh/mesh.h tests/visua
 	$(CXX) $(CFLAGS) -I include/xml-mesh tests/visual.cpp lib/lib$(LIB_NAME).so.$(VERSION) -lboost_filesystem -lboost_system -lpng -llinear-gl -lGL -lGLEW -lSDL2 -o $@
 
 
-lib/lib$(LIB_NAME).so.$(VERSION): obj/parse.o obj/iter.o obj/math.o obj/animate.o
+lib/lib$(LIB_NAME).so.$(VERSION): obj/parse.o obj/math.o obj/animate.o obj/error.o obj/build.o obj/access.o
 	mkdir -p lib
-	$(CXX) $^ -o -lxml2 -llinear-gl $@ -shared -fPIC
+	$(CXX) $^ -lxml2 -llinear-gl -o $@ -shared -fPIC
 
 
 obj/%.o: src/%.cpp include/xml-mesh/mesh.h
