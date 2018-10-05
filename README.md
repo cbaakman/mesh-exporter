@@ -12,7 +12,7 @@ See also the wiki at https://github.com/cbaakman/xml-mesh/wiki to learn how to w
 
 ## Contents
 * 'xml_exporter.py': the mesh exporter to include in blender
-* An include dir with headers for the imiport library
+* An include dir with headers for the import library
 * A src dir with the implementation of the import library
 * A test dir, containing a visual test
 
