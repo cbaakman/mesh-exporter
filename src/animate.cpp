@@ -19,8 +19,6 @@
 #include <algorithm>
 #include <climits>
 
-#include <linear-gl/matrix.h>
-
 #include "mesh.h"
 #include "build.h"
 
